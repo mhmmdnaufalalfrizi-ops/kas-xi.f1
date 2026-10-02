@@ -95,10 +95,15 @@ const sum=(l,f='nom')=>l.reduce((a,b)=>a+(+b[f]||0),0);
 function tx(){const a=[...db.bayar.map(b=>({d:b.tgl,t:'Masuk',k:'Iuran kas',n:nama(b.sid)+' – '+weekLbl(b.periode),a:b.nom})),...db.keluar.map(k=>({d:k.tgl,t:'Keluar',k:k.kat,n:k.ket,a:k.nom}))].sort((x,y)=>x.d.localeCompare(y.d));
  let s=0;a.forEach(r=>{s+=r.t=='Masuk'?r.a:-r.a;r.s=s});return a}
 const weekRows=(s,w=curW())=>db.bayar.filter(b=>b.sid==s.id&&mon(b.periode.length==7?b.periode+'-01':b.periode)==w);
-const stat=(s,w=curW())=>{const r=weekRows(s,w);return r.some(b=>b.status=='Lunas')?'Lunas':r.some(b=>b.status=='Cicilan')?'Cicilan':'Belum'};
-const badge=(s,w=curW())=>{const t=stat(s,w);if(t=='Lunas')return'<span class="tag">Lunas</span>';
- if(t=='Cicilan')return`<span class="tag w">Cicilan</span> <small style="color:var(--mut)">terbayar ${rp(sum(weekRows(s,w).filter(b=>b.status=='Cicilan')))}</small>`;
- return'<span class="tag r">Belum bayar</span>'};
+const info=(s,w=curW())=>{const T=+s.target||0;
+ if(T>0){const m0=mon(s.mulai||w),n=Math.max(0,Math.round((new Date(w+'T12:00:00')-new Date(m0+'T12:00:00'))/6048e5)+1),due=T*n,paid=sum(db.bayar.filter(b=>b.sid==s.id));
+  return{T,n,due,paid,t:paid>=due?'Lunas':paid>T*(n-1)?'Cicilan':'Belum',kurang:Math.max(0,due-paid),lebih:Math.max(0,paid-due),thisW:paid-T*(n-1)}}
+ const r=weekRows(s,w);return{T:0,t:r.some(b=>b.status=='Lunas')?'Lunas':r.some(b=>b.status=='Cicilan')?'Cicilan':'Belum',thisW:sum(r.filter(b=>b.status=='Cicilan'))}};
+const stat=(s,w=curW())=>info(s,w).t;
+const badge=(s,w=curW())=>{const i=info(s,w),m=t=>`<br><small style="color:var(--mut)">${t}</small>`;
+ if(i.t=='Lunas')return'<span class="tag">Lunas</span>'+(i.lebih>0?m('lebih '+rp(i.lebih)+' (bayar di muka)'):'');
+ if(i.t=='Cicilan')return'<span class="tag w">Cicilan</span>'+m(i.T?'terbayar '+rp(i.thisW)+' dari '+rp(i.T)+' · kurang '+rp(i.kurang):'terbayar '+rp(i.thisW));
+ return'<span class="tag r">Belum bayar</span>'+(i.T&&i.kurang>0?m('kurang '+rp(i.kurang)):'')};
 const paidM=(s,w=curW())=>db.bayar.some(b=>b.sid==s.id&&mon(b.periode.length==7?b.periode+'-01':b.periode)==w&&b.status=='Lunas');
 
 // ---- auth + realtime
@@ -132,6 +137,11 @@ const conf=(m,fn)=>confirm(m)&&fn();
 
 // ---- siswa
 const siswaRows=()=>db.siswa.filter(s=>(s.nama+s.absen).toLowerCase().includes(S.q.toLowerCase())&&(!S.f||stat(s)==({ya:'Lunas',cicilan:'Cicilan',tidak:'Belum'})[S.f])).sort((a,b)=>a.absen-b.absen).map(s=>`<tr><td>${s.absen}</td><td>${e(s.nama)}</td><td>${e(s.kelas)}</td><td>${rp(sum(db.bayar.filter(b=>b.sid==s.id)))}</td><td>${badge(s)}</td><td><button class="btn s sm" onclick="fSiswa('${s.id}')">Edit</button> <button class="btn d sm" onclick="delS('${s.id}')">Hapus</button></td></tr>`).join('')||'<tr><td colspan=6>Tidak ada data</td></tr>';
+window.fTarget=()=>{if(!db.siswa.length)return toast('Tambah siswa dulu',1);const f=db.siswa.find(x=>x.target)||db.siswa[0];
+ modal('Target Kas per Minggu',[{k:'target',l:'Target per siswa per minggu (Rp). Kosongkan / 0 = nonaktif',t:'number'},{k:'mulai',l:'Mulai dihitung dari minggu (pilih tanggal mana saja di minggu itu)',t:'date'}],async o=>{
+  o.target=Math.max(0,+o.target||0);o.mulai=mon(o.mulai||today());
+  const ok=await W(async()=>{const b=writeBatch(fs);db.siswa.forEach(x=>b.update(doc(fs,'siswa',x.id),{target:o.target,mulai:o.mulai}));await b.commit()},o.target?'Target kas disimpan':'Target kas dinonaktifkan');
+  if(ok)logA('Target kas '+rp(o.target)+'/minggu');return ok},{target:f.target||'',mulai:f.mulai||curW()})};
 window.fSiswa=id=>{const v=db.siswa.find(s=>s.id==id)||{};
  const F=[{k:'nama',l:'Nama'},{k:'absen',l:'No. Absen',t:'number'},{k:'kelas',l:'Kelas',d:'XI IPA 1'}];
  if(!id)F.push({k:'user',l:'Username login (huruf kecil, tanpa spasi)'},{k:'pass',l:'Password (min. 6 karakter)'});
@@ -141,7 +151,7 @@ window.fSiswa=id=>{const v=db.siswa.find(s=>s.id==id)||{};
   if(id){const ok=await W(()=>updateDoc(doc(fs,'siswa',id),o),'Siswa diperbarui');if(ok)logA('Edit siswa '+o.nama);return ok}
   if(!/^[a-z0-9._]{3,}$/.test(o.user||'')||(o.pass||'').length<6)return toast('Username min 3 huruf/angka, password min 6 karakter',1)&&false;
   return W(async()=>{sec=sec||initializeApp(cfg,'sec');const sa=getAuth(sec),c=await createUserWithEmailAndPassword(sa,o.user+DOM,o.pass);await signOut(sa);
-   await addDoc(collection(fs,'siswa'),{nama:o.nama,absen:o.absen,kelas:o.kelas,user:o.user,uid:c.user.uid});logA('Tambah siswa '+o.nama)},'Siswa & akun login dibuat')},v)};
+   await addDoc(collection(fs,'siswa'),{nama:o.nama,absen:o.absen,kelas:o.kelas,user:o.user,uid:c.user.uid,target:+(db.siswa.find(x=>x.target)||{}).target||0,mulai:(db.siswa.find(x=>x.target)||{}).mulai||''});logA('Tambah siswa '+o.nama)},'Siswa & akun login dibuat')},v)};
 window.delS=id=>conf('Hapus siswa beserta data pembayarannya? (Akun login tetap ada di Firebase Auth)',()=>W(async()=>{
  const b=writeBatch(fs);db.bayar.filter(x=>x.sid==id).forEach(x=>b.delete(doc(fs,'bayar',x.id)));b.delete(doc(fs,'siswa',id));await b.commit();logA('Hapus siswa '+nama(id))},'Siswa dihapus'));
 
@@ -181,10 +191,10 @@ window.backup=()=>{dl(JSON.stringify({siswa:db.siswa,bayar:db.bayar,keluar:db.ke
 // ---- views
 const V={
 dash(){const m=sum(db.bayar),k=sum(db.keluar),p=db.siswa.filter(s=>stat(s)=='Lunas').length,c=db.siswa.filter(s=>stat(s)=='Cicilan').length;
- return`<h1>Dashboard</h1><div class="grid">${[['Saldo kas',rp(m-k)],['Total pemasukan',rp(m)],['Total pengeluaran',rp(k)],['Jumlah siswa',db.siswa.length],['Sudah bayar / Lunas (minggu ini)',p],['Cicilan (minggu ini)',c],['Belum bayar',db.siswa.length-p-c]].map(x=>`<div class="card"><div class="lbl">${x[0]}</div><div class="val">${x[1]}</div></div>`).join('')}</div>
+ return`<h1>Dashboard</h1><div class="grid">${[['Saldo kas',rp(m-k)],['Total pemasukan',rp(m)],['Total pengeluaran',rp(k)],['Jumlah siswa',db.siswa.length],['Sudah bayar / Lunas (minggu ini)',p],['Cicilan (minggu ini)',c],['Belum bayar',db.siswa.length-p-c],['Target kas / minggu',(db.siswa.find(x=>x.target)||{}).target?rp(db.siswa.find(x=>x.target).target):'-']].map(x=>`<div class="card"><div class="lbl">${x[0]}</div><div class="val">${x[1]}</div></div>`).join('')}</div>
  <div class="card"><b>Pemasukan vs pengeluaran (6 minggu terakhir)</b>${chart()}</div>
  <div class="card"><b>Transaksi terbaru</b><div class="tw"><table>${tx().slice(-5).reverse().map(r=>`<tr><td>${r.d}</td><td class="${r.t=='Masuk'?'in':'out'}">${r.t}</td><td>${e(r.n)}</td><td>${rp(r.a)}</td></tr>`).join('')||'<tr><td>Belum ada transaksi</td></tr>'}</table></div></div>`},
-siswa(){return`<h1>Data Siswa</h1><div class="bar"><input placeholder="🔍 Cari nama / absen" value="${e(S.q)}" oninput="upd('tS',()=>S.q=this.value)"><select onchange="upd('tS',()=>S.f=this.value)"><option value="">Semua status</option><option value="ya" ${S.f=='ya'?'selected':''}>Sudah bayar (Lunas)</option><option value="cicilan" ${S.f=='cicilan'?'selected':''}>Cicilan</option><option value="tidak" ${S.f=='tidak'?'selected':''}>Belum bayar</option></select><button class="btn" onclick="fSiswa()">+ Tambah</button></div><div class="card tw"><table><tr><th>Absen</th><th>Nama</th><th>Kelas</th><th>Total bayar</th><th>Minggu ini</th><th></th></tr><tbody id="tS">${siswaRows()}</tbody></table></div>`},
+siswa(){return`<h1>Data Siswa</h1><div class="bar"><input placeholder="🔍 Cari nama / absen" value="${e(S.q)}" oninput="upd('tS',()=>S.q=this.value)"><select onchange="upd('tS',()=>S.f=this.value)"><option value="">Semua status</option><option value="ya" ${S.f=='ya'?'selected':''}>Sudah bayar (Lunas)</option><option value="cicilan" ${S.f=='cicilan'?'selected':''}>Cicilan</option><option value="tidak" ${S.f=='tidak'?'selected':''}>Belum bayar</option></select><button class="btn s" onclick="fTarget()">🎯 Target kas</button><button class="btn" onclick="fSiswa()">+ Tambah</button></div><div class="card tw"><table><tr><th>Absen</th><th>Nama</th><th>Kelas</th><th>Total bayar</th><th>Minggu ini</th><th></th></tr><tbody id="tS">${siswaRows()}</tbody></table></div>`},
 bayar(){return`<h1>Pembayaran Kas</h1><div class="bar"><button class="btn" onclick="fBayar()">+ Catat pembayaran</button></div><div class="card tw"><table><tr><th>Tanggal</th><th>Siswa</th><th>Periode</th><th>Nominal</th><th>Status</th><th>Ket.</th><th></th></tr>${[...db.bayar].sort((a,b)=>b.tgl.localeCompare(a.tgl)).map(b=>`<tr><td>${b.tgl}</td><td>${e(nama(b.sid))}</td><td>${weekLbl(b.periode)}</td><td>${rp(b.nom)}</td><td><span class="tag ${b.status=='Lunas'?'':'w'}">${b.status}</span></td><td>${e(b.ket)}</td><td><button class="btn s sm" onclick="fBayar('${b.id}')">Edit</button> <button class="btn d sm" onclick="delB('${b.id}')">Hapus</button></td></tr>`).join('')||'<tr><td>Belum ada data</td></tr>'}</table><p><b>Total pemasukan: ${rp(sum(db.bayar))}</b></p></div>`},
 keluar(){return`<h1>Pengeluaran</h1><div class="bar"><button class="btn" onclick="fKeluar()">+ Catat pengeluaran</button></div><div class="card tw"><table><tr><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Nominal</th><th>Nota</th><th></th></tr>${[...db.keluar].sort((a,b)=>b.tgl.localeCompare(a.tgl)).map(k=>`<tr><td>${k.tgl}</td><td>${e(k.kat)}</td><td>${e(k.ket)}</td><td>${rp(k.nom)}</td><td>${k.foto?`<button class="btn s sm" onclick="nota('${k.id}')">Lihat</button>`:'-'}</td><td><button class="btn s sm" onclick="fKeluar('${k.id}')">Edit</button> <button class="btn d sm" onclick="delK('${k.id}')">Hapus</button></td></tr>`).join('')||'<tr><td>Belum ada data</td></tr>'}</table><p><b>Saldo kas: ${rp(sum(db.bayar)-sum(db.keluar))}</b></p></div>`},
 riwayat(){return`<h1>Riwayat Transaksi</h1><div class="bar"><input placeholder="🔍 Cari / kategori" oninput="upd('tR',()=>S.rq=this.value)"><input type="date" title="Dari" onchange="upd('tR',()=>S.rf=this.value)"><input type="date" title="Sampai" onchange="upd('tR',()=>S.rt=this.value)"></div><div class="card tw"><table><tr><th>Tanggal</th><th>Jenis</th><th>Kategori</th><th>Keterangan</th><th>Nominal</th><th>Saldo</th></tr><tbody id="tR">${riwayatRows()}</tbody></table></div>`},
