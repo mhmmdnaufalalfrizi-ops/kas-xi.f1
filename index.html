@@ -39,18 +39,10 @@ input,select{background:var(--bg);border:1px solid var(--bd);border-radius:9px;p
 .tag{padding:2px 8px;border-radius:99px;font-size:12px;background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
 .tag.r{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
 .tag.w{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
-.st{width:auto;min-width:118px;padding:4px 8px;border-radius:99px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent}
-.st.ok{background:color-mix(in srgb,var(--ok) 15%,var(--card));color:var(--ok)}
-.st.w{background:color-mix(in srgb,var(--warn) 18%,var(--card));color:var(--warn)}
-.st.r{background:color-mix(in srgb,var(--bad) 15%,var(--card));color:var(--bad)}
-.hint{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:-4px 0 12px}
 .in{color:var(--ok)}.out{color:var(--bad)}
 #modal{position:fixed;inset:0;background:#0008;display:grid;place-items:center;padding:16px;z-index:50}
 #modal .box{max-width:420px;max-height:90vh;overflow:auto}
 .f{margin-bottom:10px}.f label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
-#boot{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:200;color:var(--mut);text-align:center}
-#boot i{display:block;width:34px;height:34px;margin:0 auto 10px;border:3px solid var(--bd);border-top-color:var(--pri);border-radius:50%;animation:sp .8s linear infinite}
-@keyframes sp{to{transform:rotate(360deg)}}
 #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);padding:10px 18px;border-radius:10px;color:#fff;z-index:99}
 @media(max-width:760px){
 #app{flex-direction:column}
@@ -61,8 +53,7 @@ main{padding:14px}}
 </style>
 </head>
 <body>
-<div id="boot"><div><i></i>Memuat…</div></div>
-<div id="login" class="hide">
+<div id="login">
  <div class="box">
   <h1>💰 Kas Kelas</h1>
   <div class="f"><label>Username</label><input id="lu" autocomplete="username"></div>
@@ -77,14 +68,13 @@ main{padding:14px}}
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,createUserWithEmailAndPassword} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import {getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,collection,doc,getDoc,addDoc,updateDoc,deleteDoc,onSnapshot,query,where,orderBy,limit,serverTimestamp,writeBatch,getDocs} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import {getFirestore,collection,doc,getDoc,addDoc,updateDoc,deleteDoc,onSnapshot,query,where,orderBy,limit,serverTimestamp,writeBatch,getDocs} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 /* ====== GANTI DENGAN CONFIG FIREBASE KAMU (Project settings → Your apps → Web) ====== */
 const cfg={apiKey:"AIzaSyC9l5RukVm4LHZsztCnYmzcu4fMrkhqQJY",authDomain:"kas-xi-f1.firebaseapp.com",projectId:"kas-xi-f1",storageBucket:"kas-xi-f1.firebasestorage.app",messagingSenderId:"1054707870845",appId:"1:1054707870845:web:ae77335fe06e799401d514"};
 /* ================================================================================= */
 
-const app=initializeApp(cfg),auth=getAuth(app);
-let fs;try{fs=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})})}catch(x){fs=getFirestore(app)}
+const app=initializeApp(cfg),auth=getAuth(app),fs=getFirestore(app);
 const $=id=>document.getElementById(id),DOM='@kaskelas.app';
 const rp=n=>'Rp '+(+n||0).toLocaleString('id-ID');
 const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -114,38 +104,25 @@ const badge=(s,w=curW())=>{const i=info(s,w),m=t=>`<br><small style="color:var(-
  if(i.t=='Lunas')return'<span class="tag">Lunas</span>'+(i.lebih>0?m('lebih '+rp(i.lebih)+' (bayar di muka)'):'');
  if(i.t=='Cicilan')return'<span class="tag w">Cicilan</span>'+m(i.T?'terbayar '+rp(i.thisW)+' dari '+rp(i.T)+' · kurang '+rp(i.kurang):'terbayar '+rp(i.thisW));
  return'<span class="tag r">Belum bayar</span>'+(i.T&&i.kurang>0?m('kurang '+rp(i.kurang)):'')};
-let _pm,_pa,_ps;
-const payMap=()=>{if(_pm&&_pa===db.bayar&&_ps===db.siswa)return _pm;_pm={};_pa=db.bayar;_ps=db.siswa;
- db.siswa.forEach(s=>{const T=+s.target||0;if(!(T>0))return;let c=0;
-  db.bayar.filter(b=>b.sid==s.id).sort((a,b)=>(a.tgl+a.id).localeCompare(b.tgl+b.id)).forEach(b=>{const x=Math.floor(c/T);c+=+b.nom||0;const y=Math.floor(c/T);_pm[b.id]={t:y>x?'Lunas':'Cicilan',w:y-x}})});return _pm};
-const payTag=b=>{const r=payMap()[b.id]||{t:b.status,w:0};return`<span class="tag ${r.t=='Lunas'?'':'w'}">${e(r.t)}</span>`+(r.w>1?` <small style="color:var(--mut)">${r.w} minggu</small>`:'')};
 const paidM=(s,w=curW())=>db.bayar.some(b=>b.sid==s.id&&mon(b.periode.length==7?b.periode+'-01':b.periode)==w&&b.status=='Lunas');
 
 // ---- auth + realtime
 window.doLogin=async()=>{const u=$('lu').value.trim().toLowerCase(),p=$('lp').value;if(!u||!p)return toast('Isi username & password',1);
  try{await signInWithEmailAndPassword(auth,u+DOM,p)}catch(x){toast('Username atau password salah',1)}};
 window.logout=()=>signOut(auth);
-const VIEWS={admin:['dash','siswa','bayar','keluar','riwayat','lap'],siswa:['saya']};
-const bootOff=()=>$('boot').classList.add('hide');
 onAuthStateChanged(auth,async u=>{
- unsubs.forEach(f=>f());unsubs=[];db={siswa:[],bayar:[],keluar:[],log:[]};nav._h=nav._v=nav._s='';
- if(!u){user=null;$('app').classList.add('hide');$('login').classList.remove('hide');bootOff();return}
- $('boot').classList.remove('hide');let a;try{a=await getDoc(doc(fs,'admins',u.uid))}catch(x){a={exists:()=>false}}
+ unsubs.forEach(f=>f());unsubs=[];db={siswa:[],bayar:[],keluar:[],log:[]};
+ if(!u){user=null;$('app').classList.add('hide');$('login').classList.remove('hide');return}
+ const a=await getDoc(doc(fs,'admins',u.uid));
  user=a.exists()?{role:'admin',name:'Bendahara'}:{role:'siswa',uid:u.uid,name:u.email.split('@')[0]};
- let sv='';try{sv=localStorage.getItem('kk_view')||''}catch(x){}
- view=VIEWS[user.role].includes(sv)?sv:VIEWS[user.role][0];
  const C=c=>collection(fs,c),own=c=>query(C(c),where('uid','==',u.uid));
  const src=isA()?{siswa:C('siswa'),bayar:C('bayar'),keluar:C('keluar'),log:query(C('log'),orderBy('ts','desc'),limit(15))}:{siswa:own('siswa'),bayar:own('bayar')};
- const keys=Object.keys(src),ready=new Set();let shown=false;
- const show=()=>{if(shown)return;shown=true;$('login').classList.add('hide');$('app').classList.remove('hide');bootOff();nav()};
- const tm=setTimeout(show,5000);
- for(const k of keys)unsubs.push(onSnapshot(src[k],s=>{db[k]=s.docs.map(d=>({id:d.id,...d.data()}));ready.add(k);if(ready.size>=keys.length){clearTimeout(tm);show()}if(shown)nav()},x=>{toast('Akses data ditolak: '+x.code,1);ready.add(k);if(ready.size>=keys.length){clearTimeout(tm);show()}}));
-});
+ for(const k in src)unsubs.push(onSnapshot(src[k],s=>{db[k]=s.docs.map(d=>({id:d.id,...d.data()}));nav()},x=>toast('Akses data ditolak: '+x.code,1)));
+ $('login').classList.add('hide');$('app').classList.remove('hide');view=isA()?'dash':'saya';nav()});
 function nav(){if(!user)return;const m=isA()?[['dash','📊','Dashboard'],['siswa','👥','Siswa'],['bayar','💵','Pembayaran'],['keluar','🧾','Pengeluaran'],['riwayat','📜','Riwayat'],['lap','📄','Laporan']]:[['saya','👤','Kas Saya']];
- const sh='<h2>💰 Kas Kelas</h2>'+m.map(x=>`<button class="nav ${view==x[0]?'on':''}" onclick="go('${x[0]}')">${x[1]} ${x[2]}</button>`).join('')+`<div style="flex:1"></div><button class="nav" onclick="theme()">🌓 Mode gelap</button><button class="nav" onclick="logout()">🚪 Keluar</button>`;
- if(sh!==nav._s){$('side').innerHTML=sh;nav._s=sh}
- if(!document.activeElement||!/INPUT|SELECT/.test(document.activeElement.tagName)||$('modal').classList.contains('hide')&&!document.activeElement.closest('main')){const h=V[view]();if(h!==nav._h||nav._v!=view){$('main').innerHTML=h;nav._h=h;nav._v=view}}}
-window.go=v=>{view=v;try{localStorage.setItem('kk_view',v)}catch(x){}nav()};
+ $('side').innerHTML='<h2>💰 Kas Kelas</h2>'+m.map(x=>`<button class="nav ${view==x[0]?'on':''}" onclick="go('${x[0]}')">${x[1]} ${x[2]}</button>`).join('')+`<div style="flex:1"></div><button class="nav" onclick="theme()">🌓 Mode gelap</button><button class="nav" onclick="logout()">🚪 Keluar</button>`;
+ if(!document.activeElement||!/INPUT|SELECT/.test(document.activeElement.tagName)||$('modal').classList.contains('hide')&&!document.activeElement.closest('main'))$('main').innerHTML=V[view]()}
+window.go=v=>{view=v;$('main').innerHTML='';nav()};
 window.theme=()=>{const d=document.documentElement,n=(d.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'))=='dark'?'light':'dark';d.dataset.theme=n;try{localStorage.setItem('kk_theme',n)}catch(x){}};
 
 // ---- modal
@@ -154,28 +131,12 @@ function modal(title,fields,onOk,v={}){
  $('modal').classList.remove('hide');
  $('m_ok').onclick=async()=>{const o={};for(const f of fields){const el=$('m_'+f.k);o[f.k]=f.t=='file'?await img(el.files[0]):el.value.trim()}
   $('m_ok').disabled=true;if(await onOk(o)!==false)closeM();else $('m_ok').disabled=false}}
-window.closeM=()=>{$('modal').classList.add('hide');nav._h='';nav()};
+window.closeM=()=>{$('modal').classList.add('hide');nav()};
 function img(f){return new Promise(r=>{if(!f)return r('');const fr=new FileReader();fr.onload=()=>{const i=new Image();i.onload=()=>{const c=document.createElement('canvas'),k=Math.min(1,600/i.width);c.width=i.width*k;c.height=i.height*k;c.getContext('2d').drawImage(i,0,0,c.width,c.height);r(c.toDataURL('image/jpeg',.6))};i.src=fr.result};fr.readAsDataURL(f)})}
 const conf=(m,fn)=>confirm(m)&&fn();
 
 // ---- siswa
-const stSel=s=>{const i=info(s),c=i.t=='Lunas'?'ok':i.t=='Cicilan'?'w':'r',d=badge(s).replace(/^<span[^>]*>[^<]*<\/span>/,'');
- return`<select class="st ${c}" onchange="setStat('${s.id}',this.value,this)"><option value="Belum" ${i.t=='Belum'?'selected':''}>❌ Belum bayar</option>${i.t=='Cicilan'?'<option value="Cicilan" selected>🟡 Cicilan</option>':''}<option value="Lunas" ${i.t=='Lunas'?'selected':''}>✅ Sudah bayar</option></select>${d}`};
-window.setStat=(id,val,el)=>{el.blur();const s=db.siswa.find(x=>x.id==id);if(!s)return;const i=info(s),back=()=>{nav._h='';nav()};
- if(val==i.t||val=='Cicilan')return back();
- if(val=='Lunas'){const need=i.T?i.kurang:0;
-  return modal('Tandai Sudah Bayar – '+s.nama,[{k:'nom',l:'Nominal yang dibayar (Rp)'+(need?' – minimal '+rp(need)+' supaya lunas':''),t:'number'},{k:'tgl',l:'Tanggal bayar',t:'date'}],async o=>{
-   o.nom=+o.nom;if(!(o.nom>0)||!o.tgl){toast('Isi nominal & tanggal bayar',1);return false}
-   if(need&&o.nom<need){toast('Kurang. Untuk Lunas minimal '+rp(need),1);return false}
-   const d={sid:id,uid:s.uid,tgl:o.tgl,nom:o.nom,periode:curW(),status:'Lunas',ket:'Ditandai sudah bayar dari menu Siswa'};
-   const ok=await W(()=>addDoc(collection(fs,'bayar'),d),s.nama+' ditandai sudah bayar');if(ok)logA('Tandai lunas '+s.nama+' '+rp(o.nom));return ok},{nom:need||(i.T||''),tgl:today()});
- }
- // val == 'Belum': hapus pembayaran minggu ini milik siswa
- const rows=weekRows(s),tot=sum(rows);
- if(!rows.length){toast('Tidak ada pembayaran minggu ini yang bisa dibatalkan. Cek menu Pembayaran (mungkin bayar di muka).',1);return back()}
- if(!confirm('Ubah '+s.nama+' jadi BELUM BAYAR minggu ini?\n'+rows.length+' catatan pembayaran minggu ini ('+rp(tot)+') akan dihapus.')){return back()}
- W(async()=>{const b=writeBatch(fs);rows.forEach(x=>b.delete(doc(fs,'bayar',x.id)));await b.commit();logA('Batalkan bayar minggu ini '+s.nama)},s.nama+' diubah jadi belum bayar').then(()=>back())};
-const siswaRows=()=>db.siswa.filter(s=>(s.nama+s.absen).toLowerCase().includes(S.q.toLowerCase())&&(!S.f||stat(s)==({ya:'Lunas',cicilan:'Cicilan',tidak:'Belum'})[S.f])).sort((a,b)=>a.absen-b.absen).map(s=>`<tr><td>${s.absen}</td><td>${e(s.nama)}</td><td>${e(s.kelas)}</td><td>${rp(sum(db.bayar.filter(b=>b.sid==s.id)))}</td><td>${stSel(s)}</td><td><button class="btn s sm" onclick="fSiswa('${s.id}')">Edit</button> <button class="btn d sm" onclick="delS('${s.id}')">Hapus</button></td></tr>`).join('')||'<tr><td colspan=6>Tidak ada data</td></tr>';
+const siswaRows=()=>db.siswa.filter(s=>(s.nama+s.absen).toLowerCase().includes(S.q.toLowerCase())&&(!S.f||stat(s)==({ya:'Lunas',cicilan:'Cicilan',tidak:'Belum'})[S.f])).sort((a,b)=>a.absen-b.absen).map(s=>`<tr><td>${s.absen}</td><td>${e(s.nama)}</td><td>${e(s.kelas)}</td><td>${rp(sum(db.bayar.filter(b=>b.sid==s.id)))}</td><td>${badge(s)}</td><td><button class="btn s sm" onclick="fSiswa('${s.id}')">Edit</button> <button class="btn d sm" onclick="delS('${s.id}')">Hapus</button></td></tr>`).join('')||'<tr><td colspan=6>Tidak ada data</td></tr>';
 window.fTarget=()=>{if(!db.siswa.length)return toast('Tambah siswa dulu',1);const f=db.siswa.find(x=>x.target)||db.siswa[0];
  modal('Target Kas per Minggu',[{k:'target',l:'Target per siswa per minggu (Rp). Kosongkan / 0 = nonaktif',t:'number'},{k:'mulai',l:'Mulai dihitung dari minggu (pilih tanggal mana saja di minggu itu)',t:'date'}],async o=>{
   o.target=Math.max(0,+o.target||0);o.mulai=mon(o.mulai||today());
@@ -196,7 +157,7 @@ window.delS=id=>conf('Hapus siswa beserta data pembayarannya? (Akun login tetap 
 
 // ---- bayar / keluar
 window.fBayar=id=>{const v={...(db.bayar.find(b=>b.id==id)||{tgl:today(),periode:curW(),status:'Lunas'})};if(v.periode.length==7)v.periode=v.periode+'-01';if(!db.siswa.length)return toast('Tambah siswa dulu',1);
- modal(id?'Edit Pembayaran':'Catat Pembayaran',[{k:'sid',l:'Siswa',o:[...db.siswa].sort((a,b)=>a.absen-b.absen).map(s=>[s.id,s.absen+'. '+s.nama])},{k:'tgl',l:'Tanggal',t:'date'},{k:'nom',l:'Nominal (Rp)',t:'number'},{k:'periode',l:'Minggu (pilih tanggal mana saja di minggu itu)',t:'date'},{k:'ket',l:'Keterangan'},{k:'status',l:'Status (otomatis dari nominal jika Target kas aktif)',o:[['Lunas','Lunas'],['Cicilan','Cicilan']]}],async o=>{
+ modal(id?'Edit Pembayaran':'Catat Pembayaran',[{k:'sid',l:'Siswa',o:[...db.siswa].sort((a,b)=>a.absen-b.absen).map(s=>[s.id,s.absen+'. '+s.nama])},{k:'tgl',l:'Tanggal',t:'date'},{k:'nom',l:'Nominal (Rp)',t:'number'},{k:'periode',l:'Minggu (pilih tanggal mana saja di minggu itu)',t:'date'},{k:'ket',l:'Keterangan'},{k:'status',l:'Status',o:[['Lunas','Lunas'],['Cicilan','Cicilan']]}],async o=>{
   if(!(+o.nom>0)||!o.tgl)return toast('Tanggal & nominal wajib valid',1)&&false;o.nom=+o.nom;o.periode=mon(o.periode||o.tgl);o.uid=db.siswa.find(s=>s.id==o.sid).uid;
   const ok=await W(()=>id?updateDoc(doc(fs,'bayar',id),o):addDoc(collection(fs,'bayar'),o),'Pembayaran disimpan');if(ok)logA('Pembayaran '+nama(o.sid)+' '+rp(o.nom));return ok},v)};
 window.delB=id=>conf('Hapus pembayaran ini?',()=>W(()=>deleteDoc(doc(fs,'bayar',id)),'Dihapus'));
@@ -233,15 +194,15 @@ dash(){const m=sum(db.bayar),k=sum(db.keluar),p=db.siswa.filter(s=>stat(s)=='Lun
  return`<h1>Dashboard</h1><div class="grid">${[['Saldo kas',rp(m-k)],['Total pemasukan',rp(m)],['Total pengeluaran',rp(k)],['Jumlah siswa',db.siswa.length],['Sudah bayar / Lunas (minggu ini)',p],['Cicilan (minggu ini)',c],['Belum bayar',db.siswa.length-p-c],['Target kas / minggu',(db.siswa.find(x=>x.target)||{}).target?rp(db.siswa.find(x=>x.target).target):'-']].map(x=>`<div class="card"><div class="lbl">${x[0]}</div><div class="val">${x[1]}</div></div>`).join('')}</div>
  <div class="card"><b>Pemasukan vs pengeluaran (6 minggu terakhir)</b>${chart()}</div>
  <div class="card"><b>Transaksi terbaru</b><div class="tw"><table>${tx().slice(-5).reverse().map(r=>`<tr><td>${r.d}</td><td class="${r.t=='Masuk'?'in':'out'}">${r.t}</td><td>${e(r.n)}</td><td>${rp(r.a)}</td></tr>`).join('')||'<tr><td>Belum ada transaksi</td></tr>'}</table></div></div>`},
-siswa(){return`<h1>Data Siswa</h1><div class="bar"><input placeholder="🔍 Cari nama / absen" value="${e(S.q)}" oninput="upd('tS',()=>S.q=this.value)"><select onchange="upd('tS',()=>S.f=this.value)"><option value="">Semua status</option><option value="ya" ${S.f=='ya'?'selected':''}>Sudah bayar (Lunas)</option><option value="cicilan" ${S.f=='cicilan'?'selected':''}>Cicilan</option><option value="tidak" ${S.f=='tidak'?'selected':''}>Belum bayar</option></select><button class="btn s" onclick="fTarget()">🎯 Target kas</button><button class="btn" onclick="fSiswa()">+ Tambah</button></div><div class="hint"><span>Ubah status minggu ini lewat dropdown di kolom <b>Minggu ini</b>:</span><span>✅ Sudah bayar = lunas</span><span>🟡 Cicilan = baru sebagian</span><span>❌ Belum bayar</span></div><div class="card tw"><table><tr><th>Absen</th><th>Nama</th><th>Kelas</th><th>Total bayar</th><th>Minggu ini</th><th></th></tr><tbody id="tS">${siswaRows()}</tbody></table></div>`},
-bayar(){return`<h1>Pembayaran Kas</h1><div class="bar"><button class="btn" onclick="fBayar()">+ Catat pembayaran</button></div><div class="card tw"><table><tr><th>Tanggal</th><th>Siswa</th><th>Periode</th><th>Nominal</th><th>Status</th><th>Ket.</th><th></th></tr>${[...db.bayar].sort((a,b)=>b.tgl.localeCompare(a.tgl)).map(b=>`<tr><td>${b.tgl}</td><td>${e(nama(b.sid))}</td><td>${weekLbl(b.periode)}</td><td>${rp(b.nom)}</td><td>${payTag(b)}</td><td>${e(b.ket)}</td><td><button class="btn s sm" onclick="fBayar('${b.id}')">Edit</button> <button class="btn d sm" onclick="delB('${b.id}')">Hapus</button></td></tr>`).join('')||'<tr><td>Belum ada data</td></tr>'}</table><p><b>Total pemasukan: ${rp(sum(db.bayar))}</b></p></div>`},
+siswa(){return`<h1>Data Siswa</h1><div class="bar"><input placeholder="🔍 Cari nama / absen" value="${e(S.q)}" oninput="upd('tS',()=>S.q=this.value)"><select onchange="upd('tS',()=>S.f=this.value)"><option value="">Semua status</option><option value="ya" ${S.f=='ya'?'selected':''}>Sudah bayar (Lunas)</option><option value="cicilan" ${S.f=='cicilan'?'selected':''}>Cicilan</option><option value="tidak" ${S.f=='tidak'?'selected':''}>Belum bayar</option></select><button class="btn s" onclick="fTarget()">🎯 Target kas</button><button class="btn" onclick="fSiswa()">+ Tambah</button></div><div class="card tw"><table><tr><th>Absen</th><th>Nama</th><th>Kelas</th><th>Total bayar</th><th>Minggu ini</th><th></th></tr><tbody id="tS">${siswaRows()}</tbody></table></div>`},
+bayar(){return`<h1>Pembayaran Kas</h1><div class="bar"><button class="btn" onclick="fBayar()">+ Catat pembayaran</button></div><div class="card tw"><table><tr><th>Tanggal</th><th>Siswa</th><th>Periode</th><th>Nominal</th><th>Status</th><th>Ket.</th><th></th></tr>${[...db.bayar].sort((a,b)=>b.tgl.localeCompare(a.tgl)).map(b=>`<tr><td>${b.tgl}</td><td>${e(nama(b.sid))}</td><td>${weekLbl(b.periode)}</td><td>${rp(b.nom)}</td><td><span class="tag ${b.status=='Lunas'?'':'w'}">${b.status}</span></td><td>${e(b.ket)}</td><td><button class="btn s sm" onclick="fBayar('${b.id}')">Edit</button> <button class="btn d sm" onclick="delB('${b.id}')">Hapus</button></td></tr>`).join('')||'<tr><td>Belum ada data</td></tr>'}</table><p><b>Total pemasukan: ${rp(sum(db.bayar))}</b></p></div>`},
 keluar(){return`<h1>Pengeluaran</h1><div class="bar"><button class="btn" onclick="fKeluar()">+ Catat pengeluaran</button></div><div class="card tw"><table><tr><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Nominal</th><th>Nota</th><th></th></tr>${[...db.keluar].sort((a,b)=>b.tgl.localeCompare(a.tgl)).map(k=>`<tr><td>${k.tgl}</td><td>${e(k.kat)}</td><td>${e(k.ket)}</td><td>${rp(k.nom)}</td><td>${k.foto?`<button class="btn s sm" onclick="nota('${k.id}')">Lihat</button>`:'-'}</td><td><button class="btn s sm" onclick="fKeluar('${k.id}')">Edit</button> <button class="btn d sm" onclick="delK('${k.id}')">Hapus</button></td></tr>`).join('')||'<tr><td>Belum ada data</td></tr>'}</table><p><b>Saldo kas: ${rp(sum(db.bayar)-sum(db.keluar))}</b></p></div>`},
 riwayat(){return`<h1>Riwayat Transaksi</h1><div class="bar"><input placeholder="🔍 Cari / kategori" oninput="upd('tR',()=>S.rq=this.value)"><input type="date" title="Dari" onchange="upd('tR',()=>S.rf=this.value)"><input type="date" title="Sampai" onchange="upd('tR',()=>S.rt=this.value)"></div><div class="card tw"><table><tr><th>Tanggal</th><th>Jenis</th><th>Kategori</th><th>Keterangan</th><th>Nominal</th><th>Saldo</th></tr><tbody id="tR">${riwayatRows()}</tbody></table></div>`},
 lap(){return`<h1>Laporan</h1><div class="bar"><select onchange="S.lj=this.value;updL()">${['harian','mingguan','bulanan'].map(x=>`<option ${x==S.lj?'selected':''}>${x}</option>`).join('')}</select><input type="date" value="${S.ld}" onchange="S.ld=this.value||'${today()}';updL()"><button class="btn" onclick="csv()">⬇ Excel</button><button class="btn s" onclick="print()">🖨 PDF / Cetak</button></div><div class="card" id="lb">${lapBody()}</div>
  <div class="card noprint"><b>Backup</b><div class="bar" style="margin-top:8px"><button class="btn s" onclick="backup()">💾 Unduh backup (JSON)</button></div></div>
  <div class="card noprint"><b>Log aktivitas terbaru</b><div class="tw"><table>${db.log.map(l=>`<tr><td>${l.ts?l.ts.toDate().toLocaleString('id-ID'):'...'}</td><td>${e(l.a)}</td></tr>`).join('')||'<tr><td>Kosong</td></tr>'}</table></div></div>`},
 saya(){const s=db.siswa[0]||{nama:user.name},L=[...db.bayar].sort((a,b)=>b.tgl.localeCompare(a.tgl));
- return`<h1>Halo, ${e(s.nama)}</h1><div class="grid"><div class="card"><div class="lbl">Total kas dibayar</div><div class="val">${rp(sum(L))}</div></div><div class="card"><div class="lbl">Status kas minggu ini</div><div class="val" style="line-height:1.6">${s.id?badge(s):'<span class="tag r">Belum bayar</span>'}</div></div></div><div class="hint"><span><span class="tag">Lunas</span> = kas sudah terbayar</span><span><span class="tag w">Cicilan</span> = baru bayar sebagian</span><span><span class="tag r">Belum bayar</span> = belum ada pembayaran</span></div><div class="card tw"><b>Riwayat pembayaranmu</b><table><tr><th>Tanggal</th><th>Periode</th><th>Nominal</th><th>Status</th><th>Ket.</th></tr>${L.map(b=>`<tr><td>${b.tgl}</td><td>${weekLbl(b.periode)}</td><td>${rp(b.nom)}</td><td>${payTag(b)}</td><td>${e(b.ket)}</td></tr>`).join('')||'<tr><td>Belum ada pembayaran</td></tr>'}</table></div>`}};
+ return`<h1>Halo, ${e(s.nama)}</h1><div class="grid"><div class="card"><div class="lbl">Total kas dibayar</div><div class="val">${rp(sum(L))}</div></div><div class="card"><div class="lbl">Status minggu ini</div><div class="val">${s.id?badge(s):'<span class="tag r">Belum bayar</span>'}</div></div></div><div class="card tw"><b>Riwayat pembayaranmu</b><table><tr><th>Tanggal</th><th>Periode</th><th>Nominal</th><th>Status</th><th>Ket.</th></tr>${L.map(b=>`<tr><td>${b.tgl}</td><td>${weekLbl(b.periode)}</td><td>${rp(b.nom)}</td><td><span class="tag ${b.status=='Lunas'?'':'w'}">${b.status}</span></td><td>${e(b.ket)}</td></tr>`).join('')||'<tr><td>Belum ada pembayaran</td></tr>'}</table></div>`}};
 
 try{const t=localStorage.getItem('kk_theme');if(t)document.documentElement.dataset.theme=t}catch(x){}
 $('lp').addEventListener('keydown',ev=>ev.key=='Enter'&&window.doLogin());
