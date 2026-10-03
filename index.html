@@ -72,7 +72,7 @@ main{padding:14px}}
 
 <script type="module">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,createUserWithEmailAndPassword} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,createUserWithEmailAndPassword,EmailAuthProvider,reauthenticateWithCredential,updatePassword} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import {getFirestore,initializeFirestore,persistentLocalCache,persistentMultipleTabManager,collection,doc,getDoc,addDoc,updateDoc,deleteDoc,onSnapshot,query,where,orderBy,limit,serverTimestamp,writeBatch,getDocs} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 /* ====== GANTI DENGAN CONFIG FIREBASE KAMU (Project settings → Your apps → Web) ====== */
@@ -141,7 +141,7 @@ onAuthStateChanged(auth,async u=>{
  keys.forEach(k=>sub(k,0));
 });
 function nav(){if(!user)return;const m=isA()?[['dash','📊','Dashboard'],['siswa','👥','Siswa'],['bayar','💵','Pembayaran'],['keluar','🧾','Pengeluaran'],['riwayat','📜','Riwayat'],['lap','📄','Laporan']]:[['saya','👤','Kas Saya']];
- const sh='<h2>💰 Kas Kelas</h2>'+m.map(x=>`<button class="nav ${view==x[0]?'on':''}" onclick="go('${x[0]}')">${x[1]} ${x[2]}</button>`).join('')+`<div style="flex:1"></div><button class="nav" onclick="theme()">🌓 Mode gelap</button><button class="nav" onclick="logout()">🚪 Keluar</button>`;
+ const sh='<h2>💰 Kas Kelas</h2>'+m.map(x=>`<button class="nav ${view==x[0]?'on':''}" onclick="go('${x[0]}')">${x[1]} ${x[2]}</button>`).join('')+`<div style="flex:1"></div><button class="nav" onclick="theme()">🌓 Mode gelap</button><button class="nav" onclick="fPass()">🔑 Ganti password</button><button class="nav" onclick="logout()">🚪 Keluar</button>`;
  if(sh!==nav._s){$('side').innerHTML=sh;nav._s=sh}
  if(!document.activeElement||!/INPUT|SELECT/.test(document.activeElement.tagName)||$('modal').classList.contains('hide')&&!document.activeElement.closest('main')){const h=V[view]();if(h!==nav._h||nav._v!=view){$('main').innerHTML=h;nav._h=h;nav._v=view}}}
 window.go=v=>{view=v;try{localStorage.setItem('kk_view',v)}catch(x){}nav()};
@@ -153,6 +153,15 @@ function modal(title,fields,onOk,v={}){
  $('modal').classList.remove('hide');
  $('m_ok').onclick=async()=>{const o={};for(const f of fields){const el=$('m_'+f.k);o[f.k]=f.t=='file'?await img(el.files[0]):el.value.trim()}
   $('m_ok').disabled=true;if(await onOk(o)!==false)closeM();else $('m_ok').disabled=false}}
+window.fPass=()=>modal('Ganti Password',[{k:'lama',l:'Password lama',t:'password'},{k:'baru',l:'Password baru (min. 6 karakter)',t:'password'},{k:'ulang',l:'Ulangi password baru',t:'password'}],async o=>{
+ if(!o.lama||!o.baru)return toast('Isi semua kolom',1),false;
+ if(o.baru.length<6)return toast('Password baru minimal 6 karakter',1),false;
+ if(o.baru!==o.ulang)return toast('Ulangi password tidak sama',1),false;
+ if(o.baru==o.lama)return toast('Password baru harus berbeda',1),false;
+ const u=auth.currentUser;
+ try{await reauthenticateWithCredential(u,EmailAuthProvider.credential(u.email,o.lama))}catch(x){toast('Password lama salah',1);return false}
+ try{await updatePassword(u,o.baru);toast('Password berhasil diganti')}catch(x){toast('Gagal ganti password: '+(x.code||x.message),1);return false}
+});
 window.closeM=()=>{$('modal').classList.add('hide');nav._h='';nav()};
 function img(f){return new Promise(r=>{if(!f)return r('');const fr=new FileReader();fr.onload=()=>{const i=new Image();i.onload=()=>{const c=document.createElement('canvas'),k=Math.min(1,600/i.width);c.width=i.width*k;c.height=i.height*k;c.getContext('2d').drawImage(i,0,0,c.width,c.height);r(c.toDataURL('image/jpeg',.6))};i.src=fr.result};fr.readAsDataURL(f)})}
 const conf=(m,fn)=>confirm(m)&&fn();
