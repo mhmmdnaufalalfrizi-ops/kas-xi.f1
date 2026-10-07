@@ -187,16 +187,20 @@ window.delS=id=>conf('Hapus siswa beserta data pembayarannya? (Akun login tetap 
  const b=writeBatch(fs);db.bayar.filter(x=>x.sid==id).forEach(x=>b.delete(doc(fs,'bayar',x.id)));b.delete(doc(fs,'siswa',id));await b.commit();logA('Hapus siswa '+nama(id))},'Siswa dihapus'));
 
 // ---- bayar / keluar
-window.fBayar=id=>{const v={...(db.bayar.find(b=>b.id==id)||{tgl:today(),periode:curW(),status:'Lunas'})};if(v.periode.length==7)v.periode=v.periode+'-01';if(!db.siswa.length)return toast('Tambah siswa dulu',1);
- modal(id?'Edit Pembayaran':'Catat Pembayaran',[{k:'sid',l:'Siswa',o:[...db.siswa].sort((a,b)=>a.absen-b.absen).map(s=>[s.id,s.absen+'. '+s.nama])},{k:'tgl',l:'Tanggal',t:'date'},{k:'nom',l:id?'Nominal (Rp)':'Nominal total (Rp)',t:'number'},...(id?[]:[{k:'minggu',l:'Dibayar untuk berapa minggu?',o:[1,2,3,4,5,6,7,8].map(n=>[n,n+' minggu'+(n==4?' (1 bulan)':'')])}]),{k:'periode',l:id?'Minggu (pilih tanggal mana saja di minggu itu)':'Mulai dari minggu (pilih tanggal mana saja di minggu itu)',t:'date'},{k:'ket',l:'Keterangan'},{k:'status',l:'Status',o:[['Lunas','Lunas'],['Cicilan','Cicilan']]}],async o=>{
+window.fBayar=id=>{const v={...(db.bayar.find(b=>b.id==id)||{tgl:today(),periode:curW(),status:'Lunas'})};if(v.periode.length==7)v.periode=v.periode+'-01';if(!id)v.per=(db.siswa.find(x=>x.target)||{}).target||'';if(!db.siswa.length)return toast('Tambah siswa dulu',1);
+ modal(id?'Edit Pembayaran':'Catat Pembayaran',[{k:'sid',l:'Siswa',o:[...db.siswa].sort((a,b)=>a.absen-b.absen).map(s=>[s.id,s.absen+'. '+s.nama])},{k:'tgl',l:'Tanggal',t:'date'},{k:'nom',l:id?'Nominal (Rp)':'Nominal total (Rp)',t:'number'},...(id?[]:[{k:'minggu',l:'Dibayar untuk berapa minggu?',o:[1,2,3,4,5,6,7,8].map(n=>[n,n+' minggu'+(n==4?' (1 bulan)':'')])},{k:'per',l:'Kas per minggu (Rp) – dipakai jika lebih dari 1 minggu',t:'number'}]),{k:'periode',l:id?'Minggu (pilih tanggal mana saja di minggu itu)':'Mulai dari minggu (pilih tanggal mana saja di minggu itu)',t:'date'},{k:'ket',l:'Keterangan'},{k:'status',l:'Status',o:[['Lunas','Lunas'],['Cicilan','Cicilan']]}],async o=>{
   if(!(+o.nom>0)||!o.tgl){toast('Tanggal & nominal wajib valid',1);return false}
   o.nom=+o.nom;o.periode=mon(o.periode||o.tgl);o.uid=db.siswa.find(s=>s.id==o.sid).uid;
-  const n=id?1:Math.max(1,+o.minggu||1);delete o.minggu;
+  const n=id?1:Math.max(1,+o.minggu||1),per=+o.per||0;delete o.minggu;delete o.per;
   if(n>1){
-   if(o.nom%n){toast('Nominal '+rp(o.nom)+' tidak bisa dibagi rata ke '+n+' minggu',1);return false}
-   const per=o.nom/n,ok=await W(async()=>{const b=writeBatch(fs);
-    for(let i=0;i<n;i++){const d=new Date(o.periode+'T12:00:00');d.setDate(d.getDate()+7*i);b.set(doc(collection(fs,'bayar')),{...o,nom:per,periode:ymd(d),ket:((o.ket||'')+' ('+(i+1)+'/'+n+')').trim()})}
-    await b.commit()},n+' minggu tersimpan ('+rp(per)+' per minggu)');
+   if(!(per>0)){toast('Isi kas per minggu (Rp)',1);return false}
+   if(o.nom>per*(n+1)){toast('Nominal terlalu besar untuk '+n+' minggu. Tambah jumlah minggu.',1);return false}
+   const R=[];let sisa=o.nom;
+   for(let i=0;i<n&&sisa>0;i++){const a=Math.min(per,sisa);R.push({a,ket:'('+(i+1)+'/'+n+')'});sisa-=a}
+   if(sisa>0)R.push({a:sisa,ket:'(sisa, kurang '+rp(per-sisa)+')'});
+   const ok=await W(async()=>{const b=writeBatch(fs);
+    R.forEach((r,i)=>{const d=new Date(o.periode+'T12:00:00');d.setDate(d.getDate()+7*i);b.set(doc(collection(fs,'bayar')),{...o,nom:r.a,periode:ymd(d),status:r.a>=per?'Lunas':'Cicilan',ket:((o.ket||'')+' '+r.ket).trim()})});
+    await b.commit()},R.length+' catatan tersimpan'+(R.some(r=>r.a<per)?' (ada minggu yang masih kurang)':''));
    if(ok)logA('Pembayaran '+nama(o.sid)+' '+rp(o.nom)+' untuk '+n+' minggu');return ok}
   const ok=await W(()=>id?updateDoc(doc(fs,'bayar',id),o):addDoc(collection(fs,'bayar'),o),'Pembayaran disimpan');if(ok)logA('Pembayaran '+nama(o.sid)+' '+rp(o.nom));return ok},v)};
 window.delB=id=>conf('Hapus pembayaran ini?',()=>W(()=>deleteDoc(doc(fs,'bayar',id)),'Dihapus'));
